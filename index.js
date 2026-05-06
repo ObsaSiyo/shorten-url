@@ -1,17 +1,17 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, MessageFlags } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const URL_REGEX = /https?:\/\/(?:[\w-]+\.)+[\w-]+(?:\/[^\s<>"']*)?/gi;
-const MIN_LENGTH = 30; // Only shorten URLs longer than this
+const MIN_LENGTH = 30;
 
 if (!TOKEN || !CLIENT_ID) {
   console.error('Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in environment variables.');
   process.exit(1);
 }
 
-// --- Link shortener using TinyURL (no API key required) ---
+// --- Link shortener using TinyURL ---
 async function shortenUrl(url) {
   const fetch = (await import('node-fetch')).default;
   const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`);
@@ -27,10 +27,11 @@ const commands = [
     .setName('shorten')
     .setDescription('Shorten a URL using TinyURL')
     .addStringOption(opt =>
-      opt.setName('url')
-        .setDescription('The URL to shorten')
-        .setRequired(true)
-    )
+      opt.setName('url').setDescription('The URL to shorten').setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName('undo')
+    .setDescription('Delete your most recent bot-shortened message in this channel')
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -44,7 +45,6 @@ async function registerCommands() {
   }
 }
 
-// --- Bot client ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -57,18 +57,55 @@ client.once('clientReady', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
+// --- Webhook cache ---
+const webhookCache = new Map();
+
+async function getOrCreateWebhook(channel) {
+  if (webhookCache.has(channel.id)) return webhookCache.get(channel.id);
+  const webhooks = await channel.fetchWebhooks();
+  let webhook = webhooks.find(w => w.name === 'LinkShortener' && w.owner?.id === client.user.id);
+  if (!webhook) {
+    webhook = await channel.createWebhook({
+      name: 'LinkShortener',
+      reason: 'Auto-shorten link impersonation'
+    });
+  }
+  webhookCache.set(channel.id, webhook);
+  return webhook;
+}
+
+// --- Track shortened messages: { channelId: { userId: [messageIds] } } ---
+const shortenedMessages = new Map();
+
+function trackMessage(channelId, userId, messageId) {
+  if (!shortenedMessages.has(channelId)) shortenedMessages.set(channelId, new Map());
+  const channelMap = shortenedMessages.get(channelId);
+  if (!channelMap.has(userId)) channelMap.set(userId, []);
+  channelMap.get(userId).push(messageId);
+
+  // Cap memory: only keep last 20 messages per user per channel
+  const arr = channelMap.get(userId);
+  if (arr.length > 20) arr.shift();
+}
+
+function popLastMessage(channelId, userId) {
+  const channelMap = shortenedMessages.get(channelId);
+  if (!channelMap) return null;
+  const arr = channelMap.get(userId);
+  if (!arr || arr.length === 0) return null;
+  return arr.pop();
+}
+
 // --- Slash command handler ---
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
+  // /shorten
   if (interaction.commandName === 'shorten') {
     const url = interaction.options.getString('url');
-    try {
-      new URL(url);
-    } catch {
-      return interaction.reply({ content: '❌ Invalid URL. Must start with http:// or https://', ephemeral: true });
+    try { new URL(url); } catch {
+      return interaction.reply({ content: '❌ Invalid URL.', flags: MessageFlags.Ephemeral });
     }
-
     await interaction.deferReply();
     try {
       const short = await shortenUrl(url);
@@ -76,33 +113,40 @@ client.on('interactionCreate', async interaction => {
     } catch {
       await interaction.editReply('❌ Failed to shorten the URL.');
     }
+    return;
+  }
+
+  // /undo
+  if (interaction.commandName === 'undo') {
+    const messageId = popLastMessage(interaction.channelId, interaction.user.id);
+    if (!messageId) {
+      return interaction.reply({
+        content: '❌ No recent shortened messages to undo in this channel.',
+        flags: MessageFlags.Ephemeral
+      });
+    }
+    try {
+      const webhook = await getOrCreateWebhook(interaction.channel);
+      await webhook.deleteMessage(messageId);
+      await interaction.reply({
+        content: '✅ Removed your last shortened message.',
+        flags: MessageFlags.Ephemeral
+      });
+    } catch (err) {
+      console.error('Undo error:', err);
+      await interaction.reply({
+        content: '❌ Could not delete the message (already gone?).',
+        flags: MessageFlags.Ephemeral
+      });
+    }
+    return;
   }
 });
-
-// --- Webhook cache (one webhook per channel) ---
-const webhookCache = new Map();
-
-async function getOrCreateWebhook(channel) {
-  if (webhookCache.has(channel.id)) return webhookCache.get(channel.id);
-
-  const webhooks = await channel.fetchWebhooks();
-  let webhook = webhooks.find(w => w.name === 'LinkShortener' && w.owner?.id === client.user.id);
-
-  if (!webhook) {
-    webhook = await channel.createWebhook({
-      name: 'LinkShortener',
-      reason: 'Auto-shorten link impersonation'
-    });
-  }
-
-  webhookCache.set(channel.id, webhook);
-  return webhook;
-}
 
 // --- Auto-shorten with webhook impersonation ---
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
-  if (!message.guild) return; // skip DMs (no webhooks)
+  if (!message.guild) return;
 
   const matches = message.content.match(URL_REGEX);
   if (!matches) return;
@@ -125,12 +169,15 @@ client.on('messageCreate', async message => {
     await message.delete();
 
     const webhook = await getOrCreateWebhook(message.channel);
-    await webhook.send({
+    const sent = await webhook.send({
       content: newContent,
       username: message.member?.displayName || message.author.username,
       avatarURL: message.author.displayAvatarURL({ extension: 'png', size: 256 }),
-      allowedMentions: { parse: [] } // prevent ping abuse
+      allowedMentions: { parse: [] }
     });
+
+    // Track for /undo
+    trackMessage(message.channel.id, message.author.id, sent.id);
   } catch (err) {
     console.error('Auto-shorten error:', err);
   }
