@@ -1,5 +1,5 @@
-const shorten = require('../commands/shorten');
-const undo = require('../commands/undo');
+const shorten = require('./shorten');
+const undo = require('./undo');
 
 const commands = { shorten, u: undo };
 
