@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-const URL_REGEX = /https?:\/\/(?:[\w-]+\.)+[\w-]+(?:\/[^\s<>"']*)?/gi;
+const URL_REGEX = /https?:\/\/(?!(?:[\w-]+\.)*(?:cdn\.discordapp\.com|media\.discordapp\.net|tenor\.com|giphy\.com|c\.tenor\.com|i\.giphy\.com)(?:\/|\s|$))(?:[\w-]+\.)+[\w-]+(?:\/[^\s<>"']*)?/gi;
 const MIN_LENGTH = 30;
 
 if (!TOKEN || !CLIENT_ID) {
