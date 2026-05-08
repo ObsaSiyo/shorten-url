@@ -2,12 +2,12 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, MessageFla
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const CLIENT_ID = process.env.discord_Client_ID;
 const URL_REGEX = /https?:\/\/(?!(?:[\w-]+\.)*(?:cdn\.discordapp\.com|media\.discordapp\.net|tenor\.com|giphy\.com|c\.tenor\.com|i\.giphy\.com)(?:\/|\s|$))(?:[\w-]+\.)+[\w-]+(?:\/[^\s<>"']*)?/gi;
 const MIN_LENGTH = 30;
 
 if (!TOKEN || !CLIENT_ID) {
-  console.error('Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in environment variables.');
+  console.error('Missing DISCORD_TOKEN or discord_Client_ID in environment variables.');
   process.exit(1);
 }
 
@@ -30,7 +30,7 @@ const commands = [
       opt.setName('url').setDescription('The URL to shorten').setRequired(true)
     ),
   new SlashCommandBuilder()
-    .setName('undo')
+    .setName('u')
     .setDescription('Delete your most recent bot-shortened message in this channel')
 ].map(c => c.toJSON());
 
@@ -82,8 +82,6 @@ function trackMessage(channelId, userId, messageId) {
   const channelMap = shortenedMessages.get(channelId);
   if (!channelMap.has(userId)) channelMap.set(userId, []);
   channelMap.get(userId).push(messageId);
-
-  // Cap memory: only keep last 20 messages per user per channel
   const arr = channelMap.get(userId);
   if (arr.length > 20) arr.shift();
 }
@@ -116,8 +114,8 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // /undo
-  if (interaction.commandName === 'undo') {
+  // /u
+  if (interaction.commandName === 'u') {
     const messageId = popLastMessage(interaction.channelId, interaction.user.id);
     if (!messageId) {
       return interaction.reply({
@@ -176,7 +174,6 @@ client.on('messageCreate', async message => {
       allowedMentions: { parse: [] }
     });
 
-    // Track for /undo
     trackMessage(message.channel.id, message.author.id, sent.id);
   } catch (err) {
     console.error('Auto-shorten error:', err);
