@@ -115,7 +115,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   // /u
-  if (interaction.commandName === 'u') {
+  if (interaction.commandName === 'undo') {
     const messageId = popLastMessage(interaction.channelId, interaction.user.id);
     if (!messageId) {
       return interaction.reply({
