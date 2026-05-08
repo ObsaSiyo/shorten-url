@@ -1,12 +1,13 @@
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, MessageFlags } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_ID = process.env.discord_Client_ID;
 const URL_REGEX = /https?:\/\/(?!(?:[\w-]+\.)*(?:cdn\.discordapp\.com|media\.discordapp\.net|tenor\.com|giphy\.com|c\.tenor\.com|i\.giphy\.com)(?:\/|\s|$))(?:[\w-]+\.)+[\w-]+(?:\/[^\s<>"']*)?/gi;
 const MIN_LENGTH = 30;
 
 if (!TOKEN || !CLIENT_ID) {
-  console.error('Missing DISCORD_TOKEN or CLIENT_ID in environment variables.');
+  console.error('Missing DISCORD_TOKEN or discord_Client_ID in environment variables.');
   process.exit(1);
 }
 
