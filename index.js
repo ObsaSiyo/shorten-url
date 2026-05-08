@@ -30,7 +30,7 @@ const commands = [
       opt.setName('url').setDescription('The URL to shorten').setRequired(true)
     ),
   new SlashCommandBuilder()
-    .setName('u')
+    .setName('undo')
     .setDescription('Delete your most recent bot-shortened message in this channel')
 ].map(c => c.toJSON());
 
