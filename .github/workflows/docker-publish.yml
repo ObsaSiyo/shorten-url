@@ -12,6 +12,8 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Connects the job to the environment in image_bc64b8.png
+    environment: shorten-bot-env 
     permissions:
       contents: read
       packages: write
@@ -46,5 +48,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Pass secrets as build-args if needed during 'npm run build'
+          build-args: |
+            DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+            CLIENT_ID=${{ secrets.CLIENT_ID }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
